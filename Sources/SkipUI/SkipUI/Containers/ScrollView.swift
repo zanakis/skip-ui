@@ -85,7 +85,9 @@ public struct ScrollView : View, Renderable {
                 PreferenceValues.shared.contribute(context: context, key: ToolbarPreferenceKey.self, value: ToolbarPreferences(scrollableState: scrollState, for: [ToolbarPlacement.bottomBar]))
                 PreferenceValues.shared.contribute(context: context, key: TabBarPreferenceKey.self, value: ToolbarBarPreferences(scrollableState: scrollState))
             }
-            IgnoresSafeAreaLayout(expandInto: [], checkEdges: [.bottom], modifier: modifier, logTag: "ScrollView") { _, safeAreaEdges in
+            // The probed edges are not used below, and the probe's state flips whenever a
+            // nested scroll view passes the tab bar, forcing a whole-page relayout each time.
+            IgnoresSafeAreaLayout(expandInto: [], checkEdges: [], modifier: modifier, logTag: "ScrollView") { _, _ in
                 var containerModifier: Modifier = Modifier
                 if wantsVerticalScroll {
                     containerModifier = containerModifier.fillMaxHeight()
