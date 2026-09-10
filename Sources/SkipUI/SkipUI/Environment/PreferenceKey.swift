@@ -11,6 +11,7 @@ import androidx.compose.runtime.ProvidedValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,7 +56,7 @@ final class PreferenceValues {
         let provided = collectors.map { collector in
             var compositionLocal = EnvironmentValues.shared.compositionLocals[collector.key]
             if compositionLocal == nil {
-                compositionLocal = compositionLocalOf { Unit }
+                compositionLocal = staticCompositionLocalOf { Unit }
                 EnvironmentValues.shared.compositionLocals[collector.key] = compositionLocal
             }
             // SKIP INSERT: val element = compositionLocal!! provides collector

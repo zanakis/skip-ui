@@ -21,6 +21,7 @@ import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.currentComposer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -163,7 +164,7 @@ public final class EnvironmentValues {
         if let value = compositionLocals[key] {
             return value
         }
-        let value = compositionLocalOf { defaultValue() ?? Unit }
+        let value = staticCompositionLocalOf { defaultValue() ?? Unit }
         compositionLocals[key] = value
         return value
     }
