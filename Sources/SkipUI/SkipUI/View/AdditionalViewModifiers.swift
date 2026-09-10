@@ -853,10 +853,11 @@ extension View {
         return ModifiedContent(content: self, modifier: RenderModifier {
             let density = LocalDensity.current
             let animatable = (Float(x), Float(y)).asAnimatable(context: $0, animTx: animTx)
-            let offsetPx = with(density) {
-                IntOffset(animatable.value.0.dp.roundToPx(), animatable.value.1.dp.roundToPx())
+            return $0.modifier.offset {
+                with(density) {
+                    IntOffset(animatable.value.0.dp.roundToPx(), animatable.value.1.dp.roundToPx())
+                }
             }
-            return $0.modifier.offset { offsetPx }
         })
         #else
         return self

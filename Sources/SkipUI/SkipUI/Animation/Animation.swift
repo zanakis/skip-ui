@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
@@ -634,8 +635,12 @@ public enum AnimationCompletionCriteria : Hashable {
     // SKIP NOWARN
     let resetValue = rememberSaveable(stateSaver: context.stateSaver as Saver<T?, Any>) { mutableStateOf<T?>(nil) }
     let animatable = remember { Animatable(resetValue.value ?? value, converter) }
-    let isAnimating = animatable.isRunning || animatable.value != animatable.targetValue
-    if isAnimating || animatable.value != value {
+    // Read unobserved: observing the running value here would recompose the modifier's
+    // scope on every animation frame. Modifiers that read `animatable.value` inside a
+    // deferred lambda (graphicsLayer/offset) then update without recomposition.
+    let isAnimating: Bool = Snapshot.withoutReadObservation { animatable.isRunning || animatable.value != animatable.targetValue }
+    let isStale: Bool = Snapshot.withoutReadObservation { animatable.value != value }
+    if isAnimating || isStale {
         let animation = Animation.current(isAnimating: isAnimating)
         LaunchedEffect(value, animation) {
             if let animation {
@@ -669,9 +674,13 @@ public enum AnimationCompletionCriteria : Hashable {
     // SKIP NOWARN
     let resetValue = rememberSaveable(stateSaver: context.stateSaver as Saver<T?, Any>) { mutableStateOf<T?>(nil) }
     let animatable = remember { Animatable(resetValue.value ?? value, converter) }
-    let isAnimating = animatable.isRunning || animatable.value != animatable.targetValue
-    let isNewTarget = animatable.targetValue != value
-    if isAnimating || animatable.value != value {
+    // Read unobserved: observing the running value here would recompose the modifier's
+    // scope on every animation frame. Modifiers that read `animatable.value` inside a
+    // deferred lambda (graphicsLayer/offset) then update without recomposition.
+    let isAnimating: Bool = Snapshot.withoutReadObservation { animatable.isRunning || animatable.value != animatable.targetValue }
+    let isNewTarget: Bool = Snapshot.withoutReadObservation { animatable.targetValue != value }
+    let isStale: Bool = Snapshot.withoutReadObservation { animatable.value != value }
+    if isAnimating || isStale {
         // A new target with no provenance is a plain state write, so it must cancel any
         // previous in-flight animation instead of inheriting the remembered animation.
         // Only the computed target reaches this layer. For `anchor + drag`, we cannot tell
