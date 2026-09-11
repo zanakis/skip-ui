@@ -27,6 +27,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import kotlinx.coroutines.Dispatchers
@@ -217,10 +218,16 @@ public struct Animation : Hashable {
     #if SKIP
     /// Publish `animation` through one Compose frame.
     static func markRecentWithAnimation(_ animation: Animation?) {
-        recentWithAnimationAnimation = animation
+        // An infinite animation is never an ambient transition for unrelated render-path
+        // values (colors, shapes, text styles): adopting it makes them oscillate forever.
+        recentWithAnimationAnimation = animation?.isInfinite == true ? nil : animation
         recentWithAnimationGeneration += 1
         let generation = recentWithAnimationGeneration
-        GlobalScope.async(Dispatchers.Main) {
+        // Dispatchers.Main carries no MonotonicFrameClock, so withFrameNanos fails there
+        // (silently, inside async) and the marker was never cleared: an infinite
+        // withAnimation then became the permanent ambient animation for every
+        // render-path value in the process.
+        GlobalScope.async(AndroidUiDispatcher.Main) {
             // SKIP INSERT: withFrameNanos { _ -> }
             if recentWithAnimationGeneration == generation {
                 recentWithAnimationAnimation = nil
