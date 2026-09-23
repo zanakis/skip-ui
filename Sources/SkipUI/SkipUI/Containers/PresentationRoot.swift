@@ -8,15 +8,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
@@ -29,7 +33,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 
 /// The root of a presentation, such as the root presentation or a sheet.
-@Composable public func PresentationRoot(defaultColorScheme: ColorScheme? = nil, absoluteSystemBarEdges systemBarEdges: Edge.Set = .all, context: ComposeContext, content: @Composable (ComposeContext) -> Void) {
+@Composable public func PresentationRoot(defaultColorScheme: ColorScheme? = nil, absoluteSystemBarEdges systemBarEdges: Edge.Set = .all, depth: Int = 0, context: ComposeContext, content: @Composable (ComposeContext) -> Void) {
     launchUIApplicationActivity()
 
     let preferredColorScheme = rememberSaveable(stateSaver: context.stateSaver as! Saver<Preference<PreferredColorScheme>, Any>) { mutableStateOf(Preference<PreferredColorScheme>(key: PreferredColorSchemePreferenceKey.self)) }
@@ -40,6 +44,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
             let presentationBounds = remember { mutableStateOf(Rect.Zero) }
             let density = LocalDensity.current
             let layoutDirection = LocalLayoutDirection.current
+            let covered = ModalPresentationRegistry.shared.isCovered(depth: depth)
             var rootModifier = Modifier
                 .background(androidx.compose.ui.graphics.Color.Black)
                 .fillMaxSize()
@@ -49,7 +54,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
             if systemBarEdges.contains(.trailing) {
                 rootModifier = rootModifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End))
             }
-            if systemBarEdges.contains(.bottom) {
+            if systemBarEdges.contains(.bottom) && !covered {
                 rootModifier = rootModifier.imePadding()
             }
             rootModifier = rootModifier.background(Color.background.colorImpl())
@@ -65,10 +70,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
                 // Android app behavior like e.g. Settings
                 var (safeLeft, safeTop, safeRight, safeBottom) = presentationBounds.value
                 if systemBarEdges.contains(.top) {
-                    safeTop += WindowInsets.safeDrawing.getTop(density)
+                    safeTop += WindowInsets.systemBars.union(WindowInsets.displayCutout).getTop(density)
                 }
                 if systemBarEdges.contains(.bottom) {
-                    safeBottom -= max(0, WindowInsets.safeDrawing.getBottom(density) - WindowInsets.ime.getBottom(density))
+                    let imeBottom = covered ? 0 : WindowInsets.ime.getBottom(density)
+                    safeBottom -= max(0, WindowInsets.systemBars.union(WindowInsets.displayCutout).getBottom(density) - imeBottom)
                 }
                 let safeBounds = Rect(left: safeLeft, top: safeTop, right: safeRight, bottom: safeBottom)
                 let safeArea = SafeArea(presentation: presentationBounds.value, safe: safeBounds, absoluteSystemBars: systemBarEdges)
@@ -89,8 +95,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
                     $0.set_scrollAxes(Axis.Set(rawValue: 0))
                     return ComposeResult.ok
                 } in: {
-                    Box(modifier: Modifier.fillMaxSize().padding(safeArea), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                        content(context)
+                    // SKIP INSERT: val providedPresentationDepth = LocalPresentationDepth provides depth
+                    CompositionLocalProvider(providedPresentationDepth) {
+                        Box(modifier: Modifier.fillMaxSize().padding(safeArea), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                            content(context)
+                        }
                     }
                 }
             }

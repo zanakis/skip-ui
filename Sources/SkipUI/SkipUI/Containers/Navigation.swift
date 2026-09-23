@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.union
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
@@ -588,7 +591,8 @@ public struct NavigationStack : View, Renderable {
                         }
                     }
                     // Pull the bottom bar below the keyboard
-                    let bottomPadding = with(density) { min(bottomBarHeightPx.value, Float(WindowInsets.ime.getBottom(density))).toDp() }
+                    let imeBottom = ModalPresentationRegistry.shared.isCovered(depth: LocalPresentationDepth.current) ? 0 : WindowInsets.ime.getBottom(density)
+                    let bottomPadding = with(density) { min(bottomBarHeightPx.value, Float(imeBottom)).toDp() }
                     PaddingLayout(padding: EdgeInsets(top: 0.0, leading: 0.0, bottom: Double(-bottomPadding.value), trailing: 0.0), context: context.content()) { context in
                         let containerColor = showScrolledBackground ? bottomBarBackgroundColor : unscrolledBottomBarBackgroundColor
                         let usesBottomSystemBarInset = EnvironmentValues.shared._isEdgeToEdge == true && arguments.safeArea?.absoluteSystemBarEdges.contains(.bottom) == true
@@ -623,7 +627,7 @@ public struct NavigationStack : View, Renderable {
                     .insetting(.top, to: effectiveTopBarBottomPx)
                     .insetting(.bottom, to: bottomBarTopPx.value)
                 // Inset manually for any edge where our container ignored the safe area, but we aren't showing a bar
-                let topPadding = effectiveTopBarBottomPx <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.top) ? WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() : 0.dp
+                let topPadding = effectiveTopBarBottomPx <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.top) ? WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding() : 0.dp
                 var bottomPadding = 0.dp
                 if bottomBarTopPx.value <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.bottom) {
                     bottomPadding = max(0.dp, WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding())
@@ -697,7 +701,7 @@ public struct NavigationStack : View, Renderable {
                 // arguments.ignoresSafeAreaEdges contains it, so content does not overlap the status bar or home
                 // indicator.
                 var contentModifier = Modifier.fillMaxSize()
-                let safeTopDp = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+                let safeTopDp = WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding()
                 let topBarBottomDp: Dp
                 if showsTopBar {
                     if isInlineTitleDisplayMode {
