@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,8 +20,8 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeightIn
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
@@ -42,9 +43,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -90,6 +94,34 @@ private let ButtonsCrossAxisSpacing: Dp = 12.dp
 private let AlertDialogMinWidth: Dp = 280.dp
 private let AlertDialogMaxWidth: Dp = 560.dp
 
+// Android keeps reporting IME insets to the activity window behind a modal dialog, so a presentation root that
+// reads them while covered by a sheet recomposes its whole tree whenever the sheet's keyboard shows or hides.
+final class ModalPresentationRegistry {
+    static let shared = ModalPresentationRegistry()
+
+    private let visibleDepths: kotlin.collections.MutableList<Int> = mutableListOf<Int>()
+    private let maxVisibleDepth: MutableState<Int> = mutableStateOf(0)
+
+    func register(depth: Int) {
+        visibleDepths.add(depth)
+        maxVisibleDepth.value = visibleDepths.maxOrNull() ?? 0
+    }
+
+    func unregister(depth: Int) {
+        let index = visibleDepths.indexOf(depth)
+        if index >= 0 {
+            visibleDepths.removeAt(index)
+        }
+        maxVisibleDepth.value = visibleDepths.maxOrNull() ?? 0
+    }
+
+    func isCovered(depth: Int) -> Bool {
+        return maxVisibleDepth.value > depth
+    }
+}
+
+let LocalPresentationDepth: ProvidableCompositionLocal<Int> = staticCompositionLocalOf { 0 }
+
 // SKIP INSERT: @OptIn(ExperimentalMaterial3Api::class)
 @Composable func SheetPresentation(isPresented: Binding<Bool>, isFullScreen: Bool, context: ComposeContext, content: () -> any View, onDismiss: (() -> Void)?) {
     let interactiveDismissDisabledPreference = rememberSaveable(stateSaver: context.stateSaver as! Saver<Preference<Bool>, Any>) { mutableStateOf(Preference<Bool>(key: InteractiveDismissDisabledPreferenceKey.self)) }
@@ -97,7 +129,14 @@ private let AlertDialogMaxWidth: Dp = 560.dp
 
     let sheetState = rememberModalBottomSheetState(skipPartiallyExpanded: true)
     let isPresentedValue = isPresented.get()
+    let presentationDepth = LocalPresentationDepth.current + 1
     if isPresentedValue || sheetState.isVisible {
+        DisposableEffect(presentationDepth) {
+            ModalPresentationRegistry.shared.register(depth: presentationDepth)
+            onDispose {
+                ModalPresentationRegistry.shared.unregister(depth: presentationDepth)
+            }
+        }
         // Don't fully evaluate content until we set up the presented environment. For now we just want
         // to get at the modifiers to look for `BackDismissDisabled`
         let contentRenderables = ComposeBuilder.from(content).Evaluate(context: context, options: EvaluateOptions(isKeepNonModified: true).value)
@@ -157,7 +196,7 @@ private let AlertDialogMaxWidth: Dp = 560.dp
                     inset = screenHeight * Float(1 - f)
                 default:
                     // We have to delay access to WindowInsets until inside the ModalBottomSheet composable to get accurate values
-                    let topBarHeight = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+                    let topBarHeight = WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding()
                     // Add 44 for draggable area in case content is not draggable
                     inset = topBarHeight + (24 * sheetDepth).dp + 44.dp
                 }
@@ -178,7 +217,7 @@ private let AlertDialogMaxWidth: Dp = 560.dp
             } else if !isEdgeToEdge {
                 systemBarEdges.remove(.top)
                 systemBarEdges.remove(.bottom)
-                let inset = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+                let inset = WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding()
                 topInset.value = inset
                 // Push the presentation root content area below the top bar
                 androidx.compose.foundation.layout.Spacer(modifier: Modifier.height(inset))
@@ -193,7 +232,7 @@ private let AlertDialogMaxWidth: Dp = 560.dp
                 let stateSaver = remember { ComposeStateSaver() }
                 let presentationContext = context.content(stateSaver: stateSaver)
                 // Place inside of ModalBottomSheet, which renders content async
-                PresentationRoot(context: presentationContext, absoluteSystemBarEdges: systemBarEdges) { context in
+                PresentationRoot(context: presentationContext, absoluteSystemBarEdges: systemBarEdges, depth: presentationDepth) { context in
                     EnvironmentValues.shared.setValues {
                         if !isFullScreen {
                             $0.set_sheetDepth(sheetDepth + 1)
