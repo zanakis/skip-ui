@@ -250,8 +250,10 @@ let LocalPresentationDepth: ProvidableCompositionLocal<Int> = staticCompositionL
             }
             if !isEdgeToEdge {
                 // Move the presentation root content area above the bottom bar
-                let inset = max(0.dp, WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding())
-                androidx.compose.foundation.layout.Spacer(modifier: Modifier.height(inset))
+                let density = LocalDensity.current
+                let systemBars = WindowInsets.systemBars
+                let ime = WindowInsets.ime
+                androidx.compose.foundation.layout.Spacer(modifier: Modifier.height { systemBars.getBottom(density) - ime.getBottom(density) })
             }
         }
     }

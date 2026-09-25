@@ -119,11 +119,11 @@ extension Modifier {
         let layoutDirection = LocalLayoutDirection.current
         let top = with(density) { (safeArea.safeBoundsPx.top - safeArea.presentationBoundsPx.top).toDp() }
         let left = with(density) { (safeArea.safeBoundsPx.left - safeArea.presentationBoundsPx.left).toDp() }
-        let bottom = with(density) { (safeArea.presentationBoundsPx.bottom - safeArea.safeBoundsPx.bottom).toDp() }
         let right = with(density) { (safeArea.presentationBoundsPx.right - safeArea.safeBoundsPx.right).toDp() }
         let start = layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl ? right : left
         let end = layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl ? left : right
-        return self.padding(top: top, start: start, bottom: bottom, end: end)
+        let bottomPx = Int(safeArea.presentationBoundsPx.bottom - safeArea.safeBoundsPx.bottom)
+        return self.padding(top: top, start: start, end: end).paddingBottom { bottomPx + safeArea.keyboardBottomInsetOffsetPx() }
     }
 
     /// Invoke the given closure with the modified view's root bounds.

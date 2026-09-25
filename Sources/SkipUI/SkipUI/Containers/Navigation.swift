@@ -523,8 +523,13 @@ public struct NavigationStack : View, Renderable {
             }
         }
 
+        let keyboard = currentPresentationKeyboard()
+        let containerKeyboardBottom = EnvironmentValues.shared._safeArea?.keyboardBottom
+        // Where the bar's top edge would be with no keyboard
         let bottomBarTopPx = remember { mutableStateOf(Float(0.0)) }
         let bottomBarHeightPx = remember { mutableStateOf(Float(0.0)) }
+        let barKeyboardBottom = containerKeyboardBottom?.pullingBar(heightPx: Int(bottomBarHeightPx.value))
+        let restingBottomBarTopPx = bottomBarTopPx.value > Float(0.0) ? bottomBarTopPx.value - Float(barKeyboardBottom?.raisePx(target: true) ?? 0) : bottomBarTopPx.value
         let bottomBar: @Composable () -> Void = {
             guard bottomBarPreferences?.visibility != Visibility.hidden else {
                 SideEffect {
@@ -582,7 +587,8 @@ public struct NavigationStack : View, Renderable {
                 } in: {
                     var bottomBarModifier = Modifier.zIndex(Float(1.1))
                         .onGloballyPositionedInWindow { bounds in
-                            bottomBarTopPx.value = bounds.top
+                            let barKeyboardBottom = containerKeyboardBottom?.pullingBar(heightPx: Int(bounds.bottom - bounds.top))
+                            bottomBarTopPx.value = bounds.top + Float(barKeyboardBottom?.raisePx(target: false) ?? 0)
                             bottomBarHeightPx.value = bounds.bottom - bounds.top
                         }
                     if showScrolledBackground, let bottomBarBackgroundForBrush {
@@ -590,10 +596,7 @@ public struct NavigationStack : View, Renderable {
                             bottomBarModifier = bottomBarModifier.background(bottomBarBackgroundBrush)
                         }
                     }
-                    // Pull the bottom bar below the keyboard
-                    let imeBottom = ModalPresentationRegistry.shared.isCovered(depth: LocalPresentationDepth.current) ? 0 : WindowInsets.ime.getBottom(density)
-                    let bottomPadding = with(density) { min(bottomBarHeightPx.value, Float(imeBottom)).toDp() }
-                    PaddingLayout(padding: EdgeInsets(top: 0.0, leading: 0.0, bottom: Double(-bottomPadding.value), trailing: 0.0), context: context.content()) { context in
+                    PaddingLayout(padding: EdgeInsets(), context: context.content(modifier: Modifier.pulledUnderKeyboard(keyboard))) { context in
                         let containerColor = showScrolledBackground ? bottomBarBackgroundColor : unscrolledBottomBarBackgroundColor
                         let usesBottomSystemBarInset = EnvironmentValues.shared._isEdgeToEdge == true && arguments.safeArea?.absoluteSystemBarEdges.contains(.bottom) == true
                         let windowInsets = usesBottomSystemBarInset ? BottomAppBarDefaults.windowInsets : WindowInsets(bottom: 0.dp)
@@ -625,14 +628,13 @@ public struct NavigationStack : View, Renderable {
                 // Calculate safe area for content
                 let contentSafeArea = arguments.safeArea?
                     .insetting(.top, to: effectiveTopBarBottomPx)
-                    .insetting(.bottom, to: bottomBarTopPx.value)
+                    .insetting(.bottom, to: restingBottomBarTopPx, keyboardBottom: barKeyboardBottom)
                 // Inset manually for any edge where our container ignored the safe area, but we aren't showing a bar
                 let topPadding = effectiveTopBarBottomPx <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.top) ? WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding() : 0.dp
-                var bottomPadding = 0.dp
+                var contentModifier = Modifier.fillMaxWidth().weight(Float(1.0)).padding(top: topPadding)
                 if bottomBarTopPx.value <= Float(0.0) && arguments.ignoresSafeAreaEdges.contains(.bottom) {
-                    bottomPadding = max(0.dp, WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding())
+                    contentModifier = contentModifier.paddingBottom { keyboard.systemBarsBottom() - keyboard.imeBottom() }
                 }
-                let contentModifier = Modifier.fillMaxWidth().weight(Float(1.0)).padding(top: topPadding, bottom: bottomPadding)
 
                 topBar()
                 Box(modifier: contentModifier, contentAlignment: androidx.compose.ui.Alignment.Center) {
@@ -681,7 +683,7 @@ public struct NavigationStack : View, Renderable {
                     let clampedTopBarBottomPxValue: Float = max(effectiveTopBarBottomPx, safeArea.safeBoundsPx.top)
                     contentSafeArea = safeArea
                         .insetting(.top, to: clampedTopBarBottomPxValue)
-                        .insetting(.bottom, to: bottomBarTopPx.value)
+                        .insetting(.bottom, to: restingBottomBarTopPx, keyboardBottom: barKeyboardBottom)
                 }
 
                 // Top bar aligned to top
@@ -717,7 +719,6 @@ public struct NavigationStack : View, Renderable {
                 }
 
                 let topPadding = arguments.ignoresSafeAreaEdges.contains(.top) ? max(topBarBottomDp, safeTopDp) : topBarBottomDp
-                let bottomPadding: Dp
 
                 let topBarUnderlayColor: androidx.compose.ui.graphics.Color?
                 if topBarPreferences?.backgroundVisibility == Visibility.hidden {
@@ -741,12 +742,16 @@ public struct NavigationStack : View, Renderable {
                     ) {}
                 }
 
-                if bottomBarHeightPx.value > Float(0.0) {
-                    bottomPadding = with(density) { bottomBarHeightPx.value.toDp() }
-                } else if arguments.ignoresSafeAreaEdges.contains(.bottom) {
-                    bottomPadding = max(0.dp, WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding())
-                } else {
-                    bottomPadding = 0.dp
+                let bottomBarHeightPxValue = Int(bottomBarHeightPx.value)
+                let hasBottomPadding = bottomBarHeightPxValue > 0 || arguments.ignoresSafeAreaEdges.contains(.bottom)
+                let bottomPaddingPx: () -> Int = {
+                    if bottomBarHeightPxValue > 0 {
+                        return bottomBarHeightPxValue
+                    } else if arguments.ignoresSafeAreaEdges.contains(.bottom) {
+                        return keyboard.systemBarsBottom() - keyboard.imeBottom()
+                    } else {
+                        return 0
+                    }
                 }
 
                 let bottomBarUnderlayColor: androidx.compose.ui.graphics.Color?
@@ -760,17 +765,17 @@ public struct NavigationStack : View, Renderable {
                     bottomBarUnderlayColor = nil
                 }
 
-                if bottomPadding.value > Float(0.0), let bottomBarUnderlayColor {
+                if hasBottomPadding, let bottomBarUnderlayColor {
                     Box(
                         modifier: Modifier
                             .align(androidx.compose.ui.Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .height(bottomPadding)
+                            .height(px: bottomPaddingPx)
                             .background(bottomBarUnderlayColor)
                     ) {}
                 }
 
-                contentModifier = contentModifier.padding(top: topPadding, bottom: bottomPadding)
+                contentModifier = contentModifier.padding(top: topPadding).paddingBottom(px: bottomPaddingPx)
                 Box(modifier: contentModifier, contentAlignment: androidx.compose.ui.Alignment.Center) {
                     var topPadding = 0.dp
                     let searchableState: SearchableState? = arguments.isRoot ? (EnvironmentValues.shared._searchableState ?? searchableStatePreference.value.reduced) : nil

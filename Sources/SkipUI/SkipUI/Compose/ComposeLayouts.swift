@@ -169,11 +169,6 @@ private func flexibleLayoutFloat(_ value: CGFloat?) -> Float? {
         return
     }
 
-    let effectiveBottomAdjacencyTolerancePx = max(
-        bottomAdjacencyTolerancePx,
-        safeArea.presentationBoundsPx.bottom - safeArea.safeBoundsPx.bottom
-    )
-
     if !logTag.isEmpty {
         LaunchedEffect(logTag, expandInto.rawValue, checkEdges.rawValue) {
             Log.d("SkipUI.ISAL.\(logTag)", "init expandInto=\(expandInto) checkEdges=\(checkEdges) edgesState(initial)=\(checkEdges)")
@@ -190,7 +185,8 @@ private func flexibleLayoutFloat(_ value: CGFloat?) -> Float? {
         expansionTop = Int(safeArea.safeBoundsPx.top - safeArea.presentationBoundsPx.top)
     }
     var expansionBottom = 0
-    if expandInto.contains(Edge.Set.bottom) && edges.contains(Edge.Set.bottom) {
+    let expandsBottom = expandInto.contains(Edge.Set.bottom) && edges.contains(Edge.Set.bottom)
+    if expandsBottom {
         expansionBottom = Int(safeArea.presentationBoundsPx.bottom - safeArea.safeBoundsPx.bottom)
     }
     var expansionLeft = 0
@@ -219,14 +215,20 @@ private func flexibleLayoutFloat(_ value: CGFloat?) -> Float? {
     safeBottom += expansionBottom
 
     let contentSafeBounds = Rect(top: safeTop, left: safeLeft, bottom: safeBottom, right: safeRight)
-    let contentSafeArea = SafeArea(presentation: safeArea.presentationBoundsPx, safe: contentSafeBounds, absoluteSystemBars: safeArea.absoluteSystemBarEdges)
+    var contentKeyboardBottom = safeArea.keyboardBottom
+    if expandsBottom, let keyboardBottom = safeArea.keyboardBottom {
+        contentKeyboardBottom = keyboardBottom.presentationEdge()
+    }
+    let contentSafeArea = SafeArea(presentation: safeArea.presentationBoundsPx, safe: contentSafeBounds, absoluteSystemBars: safeArea.absoluteSystemBarEdges, keyboardBottom: contentKeyboardBottom)
     EnvironmentValues.shared.setValues {
         $0.set_safeArea(contentSafeArea)
         return ComposeResult.ok
     } in: {
         Layout(modifier: modifier.onGloballyPositionedInWindow {
             let probeEdges = expandInto.union(checkEdges)
-            let newEdges = adjacentSafeAreaEdges(bounds: $0, safeArea: safeArea, isRTL: isRTL, checkEdges: probeEdges, bottomTolerancePx: effectiveBottomAdjacencyTolerancePx)
+            let liveSafeArea = safeArea.followingKeyboard()
+            let bottomTolerancePx = max(bottomAdjacencyTolerancePx, liveSafeArea.presentationBoundsPx.bottom - liveSafeArea.safeBoundsPx.bottom)
+            let newEdges = adjacentSafeAreaEdges(bounds: $0, safeArea: liveSafeArea, isRTL: isRTL, checkEdges: probeEdges, bottomTolerancePx: bottomTolerancePx)
             if !logTag.isEmpty {
                 let previous = edgesState.value
                 if newEdges != previous {
@@ -241,16 +243,17 @@ private func flexibleLayoutFloat(_ value: CGFloat?) -> Float? {
             guard !measurables.isEmpty() else {
                 return layout(width: 0, height: 0) {}
             }
+            let liveExpansionBottom = expandsBottom ? max(0, expansionBottom + safeArea.keyboardBottomInsetOffsetPx()) : 0
             // Guard the arithmetic: in an intrinsic measurement pass (e.g. a parent fill in a
             // scroll direction using IntrinsicSize.Max) Compose calls measure with
             // maxHeight == Constraints.Infinity, and adding the expansion overflows Int to a
             // negative value, crashing Constraints.copy. Preserve Infinity and never go below
             // the min constraints
-            let updatedConstraints = constraints.copy(maxWidth: constraint(constraints.maxWidth, adding: expansionLeft + expansionRight, atLeast: constraints.minWidth), maxHeight: constraint(constraints.maxHeight, adding: expansionTop + expansionBottom, atLeast: constraints.minHeight))
+            let updatedConstraints = constraints.copy(maxWidth: constraint(constraints.maxWidth, adding: expansionLeft + expansionRight, atLeast: constraints.minWidth), maxHeight: constraint(constraints.maxHeight, adding: expansionTop + liveExpansionBottom, atLeast: constraints.minHeight))
             let targetPlaceables = measurables.map { $0.measure(updatedConstraints) }
             layout(width: targetPlaceables[0].width, height: targetPlaceables[0].height) {
                 // Layout will center extra space by default
-                let relativeTop = expansionTop - ((expansionTop + expansionBottom) / 2)
+                let relativeTop = expansionTop - ((expansionTop + liveExpansionBottom) / 2)
                 let expansionLeading = isRTL ? expansionRight : expansionLeft
                 let relativeLeading = expansionLeading - ((expansionLeft + expansionRight) / 2)
                 for targetPlaceable in targetPlaceables {

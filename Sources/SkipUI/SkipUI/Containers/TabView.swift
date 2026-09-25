@@ -265,7 +265,9 @@ public struct TabView : View, Renderable {
         /// Latest TabView-scope safe area; use inside long-lived nav entry closures so inset updates (e.g. status bar hide) propagate without relying on lexical capture of `safeArea`.
         let tabViewSafeAreaState = rememberUpdatedState(safeArea)
         let density = LocalDensity.current
+        let keyboard = currentPresentationKeyboard()
         let defaultBottomBarHeight = 80.dp
+        // Where the bar's top edge would be with no keyboard
         let bottomBarTopPx = remember {
             // Default our initial value to the expected value, which helps avoid visual artifacts as we measure actual values and
             // recompose with adjusted layouts
@@ -288,6 +290,7 @@ public struct TabView : View, Renderable {
         var ignoresSafeAreaEdges: Edge.Set = [.bottom, .top]
         ignoresSafeAreaEdges.formIntersection(safeArea?.absoluteSystemBarEdges ?? [])
         IgnoresSafeAreaLayout(expandInto: ignoresSafeAreaEdges, checkEdges: ignoresSafeAreaEdges, logTag: "TabView") { _, _ in
+            let containerKeyboardBottom = rememberUpdatedState(EnvironmentValues.shared._safeArea?.keyboardBottom)
             ComposeContainer(modifier: context.modifier, fillWidth: true, fillHeight: true) { modifier in
                 // Don't use a Scaffold: it clips content beyond its bounds and prevents .ignoresSafeArea modifiers from working
                 Box(modifier: modifier.background(Color.background.colorImpl()).fillMaxSize()) {
@@ -315,7 +318,8 @@ public struct TabView : View, Renderable {
                                 .onGloballyPositionedInWindow { bounds in
                                     let lt = layoutTypeState.value
                                     if lt == NavigationSuiteType.NavigationBar {
-                                        bottomBarTopPx.value = bounds.top
+                                        let barKeyboardBottom = containerKeyboardBottom.value?.pullingBar(heightPx: Int(bounds.bottom - bounds.top))
+                                        bottomBarTopPx.value = bounds.top + Float(barKeyboardBottom?.raisePx(target: false) ?? 0)
                                         bottomBarHeightPx.value = bounds.bottom - bounds.top
                                         tabNavLeadingEndPx.value = Float(0.0)
                                     } else if lt == NavigationSuiteType.NavigationRail {
@@ -382,14 +386,8 @@ public struct TabView : View, Renderable {
                                 }
 
                                 let currentRoute = String(describing: selectedTabIndex.value) // Note: forces recompose of this context on tab navigation
-                                let bottomPadding: Dp
-                                if layoutType == NavigationSuiteType.NavigationBar {
-                                    let imeBottom = ModalPresentationRegistry.shared.isCovered(depth: LocalPresentationDepth.current) ? 0 : WindowInsets.ime.getBottom(density)
-                                    bottomPadding = with(density) { min(bottomBarHeightPx.value, Float(imeBottom)).toDp() }
-                                } else {
-                                    bottomPadding = 0.dp
-                                }
-                                PaddingLayout(padding: EdgeInsets(top: 0.0, leading: 0.0, bottom: Double(-bottomPadding.value), trailing: 0.0), context: context.content()) { context in
+                                let barContainerModifier = layoutType == NavigationSuiteType.NavigationBar ? Modifier.pulledUnderKeyboard(keyboard) : Modifier
+                                PaddingLayout(padding: EdgeInsets(), context: context.content(modifier: barContainerModifier)) { context in
                                     let tabsState = rememberUpdatedState(tabs)
                                     let containerColor = showScrolledBackground ? tabBarBackgroundColor : unscrolledTabBarBackgroundColor
                                     let onItemClick: (Int) -> Void = { tabIndex in
@@ -496,13 +494,16 @@ public struct TabView : View, Renderable {
                                     let tabIndex = (key as! SkipTabViewRouteKey).index
                                     // Inset manually where our container ignored the safe area, but we aren't showing a bar
                                     let topPadding = ignoresSafeAreaEdges.contains(.top) ? WindowInsets.systemBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding() : 0.dp
-                                    var bottomPadding = 0.dp
+                                    var contentModifier = Modifier.fillMaxSize().padding(top: topPadding)
                                     if bottomBarTopPx.value <= Float(0.0) && ignoresSafeAreaEdges.contains(.bottom) {
-                                        bottomPadding = max(0.dp, WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding() - WindowInsets.ime.asPaddingValues().calculateBottomPadding())
+                                        // Remembered so that the entry arguments compare equal across recompositions
+                                        let bottomPadding = remember(keyboard) { Modifier.paddingBottom { keyboard.systemBarsBottom() - keyboard.imeBottom() } }
+                                        contentModifier = contentModifier.then(bottomPadding)
                                     }
-                                    let contentModifier = Modifier.fillMaxSize().padding(top: topPadding, bottom: bottomPadding)
                                     let tabViewSafeArea = tabViewSafeAreaState.value
-                                    var contentSafeArea = tabViewSafeArea?.insetting(Edge.bottom, to: bottomBarTopPx.value)
+                                    let barKeyboardBottom = containerKeyboardBottom.value?.pullingBar(heightPx: Int(bottomBarHeightPx.value))
+                                    let restingBottomBarTopPx = bottomBarTopPx.value > Float(0.0) ? bottomBarTopPx.value - Float(barKeyboardBottom?.raisePx(target: true) ?? 0) : bottomBarTopPx.value
+                                    var contentSafeArea = tabViewSafeArea?.insetting(Edge.bottom, to: restingBottomBarTopPx, keyboardBottom: barKeyboardBottom)
                                     if tabNavLeadingEndPx.value > Float(0.0) {
                                         contentSafeArea = contentSafeArea?.insetting(Edge.leading, to: tabNavLeadingEndPx.value)
                                     }
