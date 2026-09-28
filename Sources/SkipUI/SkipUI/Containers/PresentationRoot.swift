@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -169,8 +170,38 @@ final class PresentationKeyboard: Equatable {
         return systemBars.getBottom(density)
     }
 
+    /// Window insets for a bar pulled under the keyboard, keeping the bar's height independent of the keyboard.
+    ///
+    /// The root's `imePadding` consumes the keyboard inset, which shrinks the bottom inset padding of any bar inside it
+    /// while the keyboard is up. A bar pulled under the keyboard would then change height as the keyboard moves, and
+    /// its measured keyboard-free top would depend on the keyboard. Adding back what the root consumed prevents that.
+    func pulledBarWindowInsets(_ insets: WindowInsets) -> WindowInsets {
+        return insets.add(RootImeInsets(keyboard: self))
+    }
+
     static func ==(lhs: PresentationKeyboard, rhs: PresentationKeyboard) -> Bool {
         return lhs === rhs
+    }
+}
+
+/// The keyboard inset a presentation root's `imePadding` consumes, read at layout time.
+struct RootImeInsets: WindowInsets, Equatable {
+    let keyboard: PresentationKeyboard
+
+    override func getLeft(density: Density, layoutDirection: androidx.compose.ui.unit.LayoutDirection) -> Int {
+        return 0
+    }
+
+    override func getTop(density: Density) -> Int {
+        return 0
+    }
+
+    override func getRight(density: Density, layoutDirection: androidx.compose.ui.unit.LayoutDirection) -> Int {
+        return 0
+    }
+
+    override func getBottom(density: Density) -> Int {
+        return keyboard.rootImeBottom()
     }
 }
 

@@ -599,7 +599,7 @@ public struct NavigationStack : View, Renderable {
                     PaddingLayout(padding: EdgeInsets(), context: context.content(modifier: Modifier.pulledUnderKeyboard(keyboard))) { context in
                         let containerColor = showScrolledBackground ? bottomBarBackgroundColor : unscrolledBottomBarBackgroundColor
                         let usesBottomSystemBarInset = EnvironmentValues.shared._isEdgeToEdge == true && arguments.safeArea?.absoluteSystemBarEdges.contains(.bottom) == true
-                        let windowInsets = usesBottomSystemBarInset ? BottomAppBarDefaults.windowInsets : WindowInsets(bottom: 0.dp)
+                        let windowInsets = usesBottomSystemBarInset ? keyboard.pulledBarWindowInsets(BottomAppBarDefaults.windowInsets) : WindowInsets(bottom: 0.dp)
                         var options = Material3BottomAppBarOptions(modifier: context.modifier.then(bottomBarModifier), containerColor: containerColor, contentColor: MaterialTheme.colorScheme.contentColorFor(containerColor), contentPadding: PaddingValues.Absolute(left: 16.dp, right: 16.dp))
                         if let updateOptions = EnvironmentValues.shared._material3BottomAppBar {
                             options = updateOptions(options)

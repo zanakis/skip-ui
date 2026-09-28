@@ -420,7 +420,7 @@ public struct TabView : View, Renderable {
                                         disabledTextColor: options.itemColors.disabledTextColor
                                     )
                                     if layoutType == NavigationSuiteType.NavigationBar {
-                                        NavigationBar(modifier: options.modifier.semantics { testTagsAsResourceId = true }.testTag("skip_ui_automation_tab_bar"), containerColor: options.containerColor, contentColor: options.contentColor, tonalElevation: options.tonalElevation) {
+                                        NavigationBar(modifier: options.modifier.semantics { testTagsAsResourceId = true }.testTag("skip_ui_automation_tab_bar"), containerColor: options.containerColor, contentColor: options.contentColor, tonalElevation: options.tonalElevation, windowInsets: keyboard.pulledBarWindowInsets(NavigationBarDefaults.windowInsets)) {
                                             for tabIndex in 0..<tabRenderables.size {
                                                 // A tab from a `false` conditional branch (e.g. `if x { Tab(...) }`)
                                                 // maps to a nil entry above; skip it so it does not render a blank,
