@@ -274,9 +274,9 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
     if isPresented.get() || sheetState.isVisible {
         // Collect buttons and message text
         let actionRenderables = actions.Evaluate(context: context, options: 0)
-        let composableActions: kotlin.collections.List<Renderable> = actionRenderables.mapNotNull {
+        let composableActions: kotlin.collections.List<Renderable> = actionRenderables.filter {
             let stripped = $0.strip()
-            return stripped as? Button ?? stripped as? Link ?? stripped as? NavigationLink
+            return stripped is Button || stripped is Link || stripped is NavigationLink
         }
         let messageRenderables: kotlin.collections.List<Renderable> = message?.Evaluate(context: context, options: 0) ?? listOf()
         let messageText = messageRenderables.mapNotNull {
@@ -337,7 +337,9 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
     }
 
     var cancelButton: Button? = nil
+    var cancelModifier: Modifier = Modifier
     for actionRenderable in actionRenderables {
+        let itemModifier = accessibilityModifier(for: actionRenderable, context: context)
         var button = actionRenderable.strip() as? Button
         if let link = actionRenderable.strip() as? Link {
             link.ComposeAction()
@@ -346,9 +348,10 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
         if let button {
             guard button.role != .cancel else {
                 cancelButton = button
+                cancelModifier = itemModifier
                 continue
             }
-            ConfirmationDialogButton(action: { isPresented.set(false); button.action() }) {
+            ConfirmationDialogButton(modifier: itemModifier, action: { isPresented.set(false); button.action() }) {
                 let text = button.label.Evaluate(context: context, options: 0).mapNotNull {
                     $0.strip() as? Text
                 }.firstOrNull()
@@ -357,7 +360,7 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
             }
         } else if let navigationLink = actionRenderable.strip() as? NavigationLink {
             let navigationAction = navigationLink.navigationAction()
-            ConfirmationDialogButton(action: { isPresented.set(false); navigationAction() }) {
+            ConfirmationDialogButton(modifier: itemModifier, action: { isPresented.set(false); navigationAction() }) {
                 let text = navigationLink.label.Evaluate(context: context, options: 0).mapNotNull {
                     $0.strip() as? Text
                 }.firstOrNull()
@@ -367,7 +370,7 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
         androidx.compose.material3.Divider()
     }
     if let cancelButton {
-        ConfirmationDialogButton(action: { isPresented.set(false); cancelButton.action() }) {
+        ConfirmationDialogButton(modifier: cancelModifier, action: { isPresented.set(false); cancelButton.action() }) {
             let text = cancelButton.label.Evaluate(context: context, options: 0).mapNotNull {
                 $0.strip() as? Text
             }.firstOrNull()
@@ -380,8 +383,8 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
     }
 }
 
-@Composable func ConfirmationDialogButton(action: () -> Void, content: @Composable () -> Void) {
-    Box(modifier: Modifier.fillMaxWidth().requiredHeightIn(min: 60.dp).clickable(onClick: action), contentAlignment: androidx.compose.ui.Alignment.Center) {
+@Composable func ConfirmationDialogButton(modifier: Modifier = Modifier, action: () -> Void, content: @Composable () -> Void) {
+    Box(modifier: modifier.fillMaxWidth().requiredHeightIn(min: 60.dp).clickable(onClick: action), contentAlignment: androidx.compose.ui.Alignment.Center) {
         content()
     }
 }
@@ -481,9 +484,9 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
         let stripped = $0.strip()
         return stripped as? TextField ?? (stripped as? SecureField)?.textField
     }
-    let optionRenderables: kotlin.collections.List<Renderable> = actionRenderables.mapNotNull {
+    let optionRenderables: kotlin.collections.List<Renderable> = actionRenderables.filter {
         let stripped = $0.strip()
-        return stripped as? Button ?? stripped as? NavigationLink ?? stripped as? Link
+        return stripped is Button || stripped is NavigationLink || stripped is Link
     }
     let messageRenderables: kotlin.collections.List<Renderable> = message?.Evaluate(context: context, options: 0) ?? listOf()
     let messageText = messageRenderables.mapNotNull {
@@ -527,7 +530,7 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
         else if let link = stripped as? Link { link.ComposeAction(); neutralAction = link.content.action }
         else if let nav = stripped as? NavigationLink { neutralAction = nav.navigationAction() }
         neutralButtonsList.add {
-            androidx.compose.material3.TextButton(onClick: { isPresented.set(false); neutralAction?() }) {
+            androidx.compose.material3.TextButton(onClick: { isPresented.set(false); neutralAction?() }, modifier: accessibilityModifier(for: renderable, context: contentContext)) {
                 let s = renderable.strip()
                 let button = s as? Button ?? (s as? Link)?.content
                 let label = button?.label ?? (s as? NavigationLink)?.label
@@ -541,7 +544,7 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
         neutralButtons: neutralButtonsList,
         confirmButton: {
             if let r = confirmRenderable {
-                androidx.compose.material3.TextButton(onClick: { isPresented.set(false); confirmAction?() }) {
+                androidx.compose.material3.TextButton(onClick: { isPresented.set(false); confirmAction?() }, modifier: accessibilityModifier(for: r, context: contentContext)) {
                     let stripped = r.strip()
                     let button = stripped as? Button ?? (stripped as? Link)?.content
                     let label = button?.label ?? (stripped as? NavigationLink)?.label
@@ -557,7 +560,7 @@ final class DisableScrollToDismissConnection : NestedScrollConnection {
         },
         dismissButton: cancelBtn != nil ? {
             if let c = cancelBtn {
-                androidx.compose.material3.TextButton(onClick: { isPresented.set(false); dismissAction?() }) {
+                androidx.compose.material3.TextButton(onClick: { isPresented.set(false); dismissAction?() }, modifier: accessibilityModifier(for: c, context: contentContext)) {
                     let stripped = c.strip()
                     let button = stripped as? Button
                     let label = button?.label

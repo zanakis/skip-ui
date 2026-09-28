@@ -203,32 +203,6 @@ public final class Menu : View, Renderable {
         }
     }
 
-    /// Walks `renderable`'s modifier chain and composes the `Modifier`
-    /// transform from every `.accessibility`-role `RenderModifier` (i.e.
-    /// `.accessibilityIdentifier(_:)`, `.accessibilityLabel(_:)`, etc.) so
-    /// it can be applied to a raw Compose element. `forEachModifier` yields
-    /// outermost-first; we collect into a list and apply in reverse so the
-    /// outermost ends up wrapping the inner ones — matching how a normal
-    /// `Renderable.Render` would build the chain.
-    @Composable private static func accessibilityModifier(for renderable: Renderable, context: ComposeContext) -> Modifier {
-        var collected: [RenderModifier] = []
-        let _: Bool? = renderable.forEachModifier { (mod: ModifierProtocol) -> Bool? in
-            if let renderMod = mod as? RenderModifier, renderMod.role == .accessibility {
-                collected.append(renderMod)
-            }
-            return nil
-        }
-        var modifier: Modifier = Modifier
-        for renderMod in collected.reversed() {
-            if let modAction = renderMod.modifierAction {
-                var ctx = context
-                ctx.modifier = modifier
-                modifier = modAction(ctx)
-            }
-        }
-        return modifier
-    }
-
     @Composable private static func RenderDropdownMenuItem(for view: ComposeBuilder, context: ComposeContext, modifier: Modifier = Modifier, tintColor: Color? = nil, isSelected: Bool? = nil, action: () -> Void) {
         let renderables = view.Evaluate(context: context, options: 0)
         let label = renderables.firstOrNull()?.strip() as? Label
