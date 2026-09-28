@@ -440,7 +440,7 @@ public struct TabView : View, Renderable {
                                                 NavigationBarItem(selected: route == currentRoute,
                                                     onClick: { options.onItemClick(tabIndex) },
                                                     icon: { options.itemIcon(tabIndex) },
-                                                    modifier: options.itemModifier(tabIndex),
+                                                    modifier: options.itemModifier(tabIndex).then(tabs[tabIndex]?.labelAccessibilityModifier(context: tabContext) ?? Modifier),
                                                     enabled: options.itemEnabled(tabIndex) && tabs[tabIndex]?.isDisabled != true,
                                                     label: label,
                                                     alwaysShowLabel: options.alwaysShowItemLabels,
@@ -470,7 +470,7 @@ public struct TabView : View, Renderable {
                                                 NavigationRailItem(selected: route == currentRoute,
                                                     onClick: { options.onItemClick(tabIndex) },
                                                     icon: { options.itemIcon(tabIndex) },
-                                                    modifier: options.itemModifier(tabIndex),
+                                                    modifier: options.itemModifier(tabIndex).then(tabs[tabIndex]?.labelAccessibilityModifier(context: tabContext) ?? Modifier),
                                                     enabled: options.itemEnabled(tabIndex) && tabs[tabIndex]?.isDisabled != true,
                                                     label: label,
                                                     alwaysShowLabel: options.alwaysShowItemLabels,
@@ -891,6 +891,14 @@ public struct Tab : TabContent, Renderable {
     #if SKIP
     @Composable override func Render(context: ComposeContext) {
         content.Compose(context: context)
+    }
+
+    /// The accessibility modifiers on this tab's label (e.g. its `accessibilityIdentifier`), for the navigation item.
+    @Composable func labelAccessibilityModifier(context: ComposeContext) -> Modifier {
+        guard let renderable = label.Evaluate(context: context, options: 0).firstOrNull() else {
+            return Modifier
+        }
+        return accessibilityModifier(for: renderable, context: context)
     }
 
     @Composable func RenderTitle(context: ComposeContext) {

@@ -3,6 +3,8 @@
 #if !SKIP_BRIDGE
 import Foundation
 #if SKIP
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.invisibleToUser
@@ -506,6 +508,38 @@ extension View {
         return self
     }
 }
+
+#if SKIP
+/// Walks `renderable`'s modifier chain and composes the `Modifier`
+/// transform from every `.accessibility`-role `RenderModifier` (i.e.
+/// `.accessibilityIdentifier(_:)`, `.accessibilityLabel(_:)`, etc.) so
+/// it can be applied to a raw Compose element. `forEachModifier` yields
+/// outermost-first; we collect into a list and apply in reverse so the
+/// outermost ends up wrapping the inner ones — matching how a normal
+/// `Renderable.Render` would build the chain.
+///
+/// Containers that strip a child down to its content view before building their own Compose element
+/// (menu items, tab bar items, alert and confirmation dialog buttons) use this so the element keeps the
+/// test tag and content description the child was given.
+@Composable func accessibilityModifier(for renderable: Renderable, context: ComposeContext) -> Modifier {
+    var collected: [RenderModifier] = []
+    let _: Bool? = renderable.forEachModifier { (mod: ModifierProtocol) -> Bool? in
+        if let renderMod = mod as? RenderModifier, renderMod.role == .accessibility {
+            collected.append(renderMod)
+        }
+        return nil
+    }
+    var modifier: Modifier = Modifier
+    for renderMod in collected.reversed() {
+        if let modAction = renderMod.modifierAction {
+            var ctx = context
+            ctx.modifier = modifier
+            modifier = modAction(ctx)
+        }
+    }
+    return modifier
+}
+#endif
 
 public struct AccessibilityActionKind : Equatable {
     public static let `default` = AccessibilityActionKind()
